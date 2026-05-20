@@ -5,3 +5,13 @@ dist/
 .expo/
 *.env
 *.env.local
+
+# Entorno
+.env
+.env.local
+.env.*.local
+apps/backend/.env
+docker/.env
+
+# Docker
+docker/postgres/data/
