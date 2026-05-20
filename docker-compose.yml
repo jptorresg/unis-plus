@@ -10,12 +10,16 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-unisplus_dev}
       POSTGRES_DB: ${POSTGRES_DB:-unisplus_db}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '${POSTGRES_PORT:-5433}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-unisplus}']
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-unisplus} -d ${POSTGRES_DB:-unisplus_db}',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5

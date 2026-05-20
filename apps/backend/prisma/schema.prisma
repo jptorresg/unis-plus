@@ -1,0 +1,380 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  BASE
+  MODERATOR
+  FORUM_ADMIN
+  SYSTEM_ADMIN
+  INSTITUTIONAL_ADMIN
+}
+
+enum InstitutionalCategory {
+  STUDENT
+  TEACHER
+  STAFF
+  ALUMNI
+}
+
+enum ForumType {
+  GENERAL
+  PUBLIC
+  PRIVATE
+  RESTRICTED // restringido por categoría institucional
+}
+
+enum ForumMembershipStatus {
+  ACTIVE
+  PENDING   // solicitud pendiente en foros privados
+  BANNED
+  INVITED
+}
+
+enum PostStatus {
+  ACTIVE
+  DELETED   // soft delete
+}
+
+enum CommentStatus {
+  ACTIVE
+  DELETED
+}
+
+enum ReportTargetType {
+  POST
+  COMMENT
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+enum NotificationEventType {
+  POST_CREATED
+  COMMENT_CREATED
+  LIKE_POST
+  LIKE_COMMENT
+  MENTION
+  FORUM_CHANGE
+  MODERATION
+  REPORT_RESOLVED
+}
+
+enum InstitutionalContentCategory {
+  PROCESSES
+  CONTACTS
+  FORMS
+  REGULATIONS
+  GENERAL
+  FAQ
+}
+
+// ─── USUARIO ──────────────────────────────────────────────────────────────────
+
+model User {
+  id                   String                @id @default(uuid())
+  institutionalId      String                @unique
+  email                String                @unique
+  passwordHash         String
+  firstName            String
+  lastName             String
+  description          String?
+  avatarUrl            String?
+  bannerUrl            String?
+  role                 UserRole              @default(BASE)
+  categories           InstitutionalCategory[]
+  isActive             Boolean               @default(false) // false hasta verificar email
+  isDeactivated        Boolean               @default(false)
+  deactivatedAt        DateTime?
+  deletedAt            DateTime?             // soft delete
+  keepContentOnDelete  Boolean               @default(true)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  // Relaciones
+  verificationCodes    VerificationCode[]
+  forumsAdministrated  Forum[]               @relation("ForumAdmin")
+  memberships          ForumMembership[]
+  moderatorOf          ForumModerator[]
+  posts                Post[]
+  comments             Comment[]
+  likesOnPosts         PostLike[]
+  likesOnComments      CommentLike[]
+  reportsMade          Report[]              @relation("ReportedBy")
+  reportsReceived      Report[]              @relation("ReportedUser")
+  notificationsReceived Notification[]       @relation("NotificationRecipient")
+  notificationsTriggered Notification[]       @relation("NotificationActor")
+  institutionalContent InstitutionalContent[]
+
+  @@map("users")
+}
+
+model VerificationCode {
+  id        String   @id @default(uuid())
+  userId    String
+  code      String
+  type      String   // "email_verification" | "password_reset"
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("verification_codes")
+}
+
+// ─── FOROS ────────────────────────────────────────────────────────────────────
+
+model Forum {
+  id              String                  @id @default(uuid())
+  name            String
+  description     String?
+  type            ForumType               @default(PUBLIC)
+  avatarUrl       String?
+  bannerUrl       String?
+  adminId         String?
+  isActive        Boolean                 @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  // Categorías permitidas si type = RESTRICTED
+  allowedCategories InstitutionalCategory[]
+
+  // Relaciones
+  admin           User?                   @relation("ForumAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+  memberships     ForumMembership[]
+  moderators      ForumModerator[]
+  posts           Post[]
+  notifications   Notification[]
+
+  @@index([type])
+  @@index([deletedAt])
+  @@map("forums")
+}
+
+model ForumMembership {
+  id        String                @id @default(uuid())
+  userId    String
+  forumId   String
+  status    ForumMembershipStatus @default(ACTIVE)
+  joinedAt  DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  forum     Forum                 @relation(fields: [forumId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, forumId])
+  @@index([forumId, status])
+  @@map("forum_memberships")
+}
+
+model ForumModerator {
+  id        String   @id @default(uuid())
+  userId    String
+  forumId   String
+  assignedAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  forum     Forum    @relation(fields: [forumId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, forumId])
+  @@map("forum_moderators")
+}
+
+// ─── PUBLICACIONES ────────────────────────────────────────────────────────────
+
+model Post {
+  id        String     @id @default(uuid())
+  forumId   String
+  authorId  String
+  content   String
+  status    PostStatus @default(ACTIVE)
+  deletedAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  forum     Forum      @relation(fields: [forumId], references: [id], onDelete: Cascade)
+  author    User       @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  images    PostImage[]
+  comments  Comment[]
+  likes     PostLike[]
+  reports   Report[]
+
+  @@index([forumId, createdAt(sort: Desc)])  // cursor pagination
+  @@index([authorId])
+  @@index([deletedAt])
+  @@map("posts")
+}
+
+model PostImage {
+  id        String   @id @default(uuid())
+  postId    String
+  url       String
+  publicId  String   // Cloudinary public_id para poder eliminar
+  order     Int      // 0-3, mantiene el orden de las imágenes
+  createdAt DateTime @default(now())
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_images")
+}
+
+// ─── COMENTARIOS ─────────────────────────────────────────────────────────────
+
+model Comment {
+  id        String        @id @default(uuid())
+  postId    String
+  authorId  String
+  parentId  String?       // null = comentario raíz, non-null = respuesta
+  content   String
+  depth     Int           @default(0) // 0 = raíz, 1 = respuesta, 2 = respuesta de respuesta...
+  path      String        // materialized path: "uuid.uuid.uuid" para queries eficientes
+  status    CommentStatus @default(ACTIVE)
+  deletedAt DateTime?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  post      Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User          @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  parent    Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Restrict)
+  replies   Comment[]     @relation("CommentReplies")
+  likes     CommentLike[]
+  reports   Report[]
+
+  @@index([postId, parentId, createdAt(sort: Desc)])
+  @@index([path])           // búsqueda de subárboles completos
+  @@index([deletedAt])
+  @@map("comments")
+}
+
+// ─── LIKES ────────────────────────────────────────────────────────────────────
+
+model PostLike {
+  id        String   @id @default(uuid())
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([postId])
+  @@map("post_likes")
+}
+
+model CommentLike {
+  id        String   @id @default(uuid())
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, commentId])
+  @@index([commentId])
+  @@map("comment_likes")
+}
+
+// ─── REPORTES ─────────────────────────────────────────────────────────────────
+
+model Report {
+  id             String           @id @default(uuid())
+  reportedById   String
+  reportedUserId String
+  targetType     ReportTargetType
+  postId         String?
+  commentId      String?
+  reason         String
+  status         ReportStatus     @default(PENDING)
+  resolution     String?
+  resolvedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  reportedBy     User             @relation("ReportedBy", fields: [reportedById], references: [id], onDelete: Restrict)
+  reportedUser   User             @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: Restrict)
+  post           Post?            @relation(fields: [postId], references: [id], onDelete: SetNull)
+  comment        Comment?         @relation(fields: [commentId], references: [id], onDelete: SetNull)
+
+  @@index([reportedUserId])  // historial de reincidencia
+  @@index([status])
+  @@map("reports")
+}
+
+// ─── NOTIFICACIONES ───────────────────────────────────────────────────────────
+
+model Notification {
+  id         String                @id @default(uuid())
+  recipientId String
+  actorId     String?              // quién disparó la notificación (puede ser sistema)
+  forumId     String?
+  eventType   NotificationEventType
+  targetId    String?              // id del post, comment, etc.
+  targetType  String?
+  read        Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+
+  recipient   User                 @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor       User?                @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  forum       Forum?               @relation(fields: [forumId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, read, createdAt(sort: Desc)])  // polling optimizado
+  @@index([recipientId, forumId])
+  @@map("notifications")
+}
+
+// ─── INFORMACIÓN INSTITUCIONAL ────────────────────────────────────────────────
+
+model InstitutionalContent {
+  id          String                       @id @default(uuid())
+  title       String
+  body        String
+  category    InstitutionalContentCategory
+  authorId    String?
+  publishedAt DateTime?
+  isPublished Boolean                      @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+
+  author      User?                        @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([category, isPublished])
+  @@map("institutional_content")
+}
+
+model NewsAndEvent {
+  id          String    @id @default(uuid())
+  title       String
+  body        String
+  imageUrl    String?
+  isEmergency Boolean   @default(false)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  publishedAt DateTime?
+  isPublished Boolean   @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isPublished, startsAt])
+  @@index([isEmergency, isPublished])
+  @@map("news_and_events")
+}
