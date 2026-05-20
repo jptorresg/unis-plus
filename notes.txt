@@ -1,0 +1,22 @@
+Checklist antes de hacer push:
+1. pnpm format
+2. pnpm lint
+3. pnpm typecheck
+4. pnpm build
+5. pnpm format:check
+6. git add .
+7. git commit -m "..."
+8. git push
+
+
+Formato para commits:
+tipo(scope): descripción
+
+Tipos de commits:
+feat: Nueva funcionalidad.
+fix: Corrección de bugs o errores.
+style: Cambios de formato visual del código.
+refactor: Cambios en código interno sin agregar features ni arreglar bugs visibles.
+chore: Tareas de mantenimiento o tooling.
+docs: Documentación.
+test: Cambios relacionados con pruebas.
