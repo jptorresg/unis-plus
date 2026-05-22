@@ -4,9 +4,10 @@ Checklist antes de hacer push:
 3. pnpm typecheck
 4. pnpm build
 5. pnpm format:check
-6. git add .
-7. git commit -m "..."
-8. git push
+6. git checkout -b feature/...
+7. git add .
+8. git commit -m "..."
+9. git push
 
 
 Formato para commits:
