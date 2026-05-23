@@ -2,6 +2,16 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "./ERD.svg"
+}
+
+generator dbml {
+  provider = "prisma-dbml-generator"
+  output   = "./dbml"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -11,8 +21,6 @@ datasource db {
 
 enum UserRole {
   BASE
-  MODERATOR
-  FORUM_ADMIN
   SYSTEM_ADMIN
   INSTITUTIONAL_ADMIN
 }
@@ -22,6 +30,11 @@ enum InstitutionalCategory {
   TEACHER
   STAFF
   ALUMNI
+}
+
+enum VerificationCodeType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
 }
 
 enum ForumType {
@@ -71,6 +84,13 @@ enum NotificationEventType {
   REPORT_RESOLVED
 }
 
+enum NotificationTargetType {
+  POST
+  COMMENT
+  FORUM
+  REPORT
+}
+
 enum InstitutionalContentCategory {
   PROCESSES
   CONTACTS
@@ -97,8 +117,14 @@ model User {
   isActive             Boolean               @default(false) // false hasta verificar email
   isDeactivated        Boolean               @default(false)
   deactivatedAt        DateTime?
-  deletedAt            DateTime?             // soft delete
-  keepContentOnDelete  Boolean               @default(true)
+  
+  // Soft delete.
+  // TODO(Fase 4): implementar job de limpieza definitiva a 30 días.
+  // keepContentOnDelete = false → ocultar posts/comentarios.
+  // keepContentOnDelete = true  → mantener contenido visible como "usuario desactivado".
+  deletedAt            DateTime?
+  
+  keepContentOnDelete  Boolean               @default(false)
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
@@ -124,7 +150,7 @@ model VerificationCode {
   id        String   @id @default(uuid())
   userId    String
   code      String
-  type      String   // "email_verification" | "password_reset"
+  type      VerificationCodeType
   expiresAt DateTime
   usedAt    DateTime?
   attempts  Int      @default(0)
@@ -145,7 +171,12 @@ model Forum {
   type            ForumType               @default(PUBLIC)
   avatarUrl       String?
   bannerUrl       String?
-  adminId         String?
+  
+  // Nullable temporalmente para permitir reasignación de admin
+  // cuando un administrador de foro es desactivado.
+  // El sistema NO debe permitir foros permanentemente sin admin.
+  adminId String?
+  
   isActive        Boolean                 @default(true)
   deletedAt       DateTime?
   createdAt       DateTime                @default(now())
@@ -170,7 +201,12 @@ model ForumMembership {
   id        String                @id @default(uuid())
   userId    String
   forumId   String
-  status    ForumMembershipStatus @default(ACTIVE)
+  
+  // PUBLIC      → ACTIVE inmediato
+  // PRIVATE     → PENDING hasta aprobación
+  // RESTRICTED  → validación adicional por categoría institucional
+  status ForumMembershipStatus    @default(ACTIVE)
+  
   joinedAt  DateTime              @default(now())
   updatedAt DateTime              @updatedAt
 
@@ -188,7 +224,12 @@ model ForumModerator {
   forumId   String
   assignedAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Validaciones pendientes en lógica de negocio:
+  // - un usuario baneado no debe poder ser moderador
+  // - el admin del foro no necesita duplicarse como moderador
+  // Prisma no puede enforcear estas reglas relacionales complejas.
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
   forum     Forum    @relation(fields: [forumId], references: [id], onDelete: Cascade)
 
   @@unique([userId, forumId])
@@ -203,13 +244,22 @@ model Post {
   authorId  String
   content   String
   status    PostStatus @default(ACTIVE)
+  
+  // Soft delete: 30 días hasta eliminación definitiva — job en Fase 4
+  // Al eliminar definitivamente:
+  // llamar CloudinaryService.deleteFile por cada PostImage.publicId
   deletedAt DateTime?
+
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
   forum     Forum      @relation(fields: [forumId], references: [id], onDelete: Cascade)
-  author    User       @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  images    PostImage[]
+  
+  // Restrict evita eliminación física accidental del usuario
+  // mientras existan referencias históricas.
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  
+  images    PostImage[] 
   comments  Comment[]
   likes     PostLike[]
   reports   Report[]
@@ -225,11 +275,18 @@ model PostImage {
   postId    String
   url       String
   publicId  String   // Cloudinary public_id para poder eliminar
-  order     Int      // 0-3, mantiene el orden de las imágenes
+  
+  // El límite máximo de 4 imágenes por post
+  // debe validarse en servicio/DTO.
+  // Orden esperado: 0-3.
+  // Prisma no puede enforcear límites máximos de relaciones.
+  order Int
+  
   createdAt DateTime @default(now())
 
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
+  @@unique([postId, order])
   @@index([postId])
   @@map("post_images")
 }
@@ -242,15 +299,28 @@ model Comment {
   authorId  String
   parentId  String?       // null = comentario raíz, non-null = respuesta
   content   String
-  depth     Int           @default(0) // 0 = raíz, 1 = respuesta, 2 = respuesta de respuesta...
-  path      String        // materialized path: "uuid.uuid.uuid" para queries eficientes
+  
+  // Límite visual sugerido en frontend:
+  // depth > 3 → mostrar "ver más respuestas"
+  depth Int @default(0)
+  
+  // Materialized path: "parentPath + id + ."
+  // Query de subárbol:
+  // WHERE path LIKE '{path}%'
+  // Alternativa closure table descartada por complejidad.
+  path      String
+  
   status    CommentStatus @default(ACTIVE)
   deletedAt DateTime?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
   post      Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  // Restrict evita eliminación física accidental del usuario
+  // mientras existan referencias históricas.
   author    User          @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  
   parent    Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Restrict)
   replies   Comment[]     @relation("CommentReplies")
   likes     CommentLike[]
@@ -298,7 +368,13 @@ model Report {
   id             String           @id @default(uuid())
   reportedById   String
   reportedUserId String
-  targetType     ReportTargetType
+  
+  // Validar en servicio:
+  // targetType = POST    → postId != null && commentId == null
+  // targetType = COMMENT → commentId != null && postId == null
+  // Prisma no soporta CHECK constraints complejos cross-field.
+  targetType ReportTargetType
+
   postId         String?
   commentId      String?
   reason         String
@@ -326,8 +402,15 @@ model Notification {
   actorId     String?              // quién disparó la notificación (puede ser sistema)
   forumId     String?
   eventType   NotificationEventType
-  targetId    String?              // id del post, comment, etc.
-  targetType  String?
+  
+  // targetId referencia dinámicamente distintas entidades
+  // según targetType (Post, Comment, Forum, Report).
+  // Prisma no soporta polymorphic relations nativas.
+  targetId    String?
+  
+  // Debe corresponder al tipo real de targetId.
+  targetType  NotificationTargetType 
+  
   read        Boolean              @default(false)
   createdAt   DateTime             @default(now())
 
@@ -335,7 +418,10 @@ model Notification {
   actor       User?                @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
   forum       Forum?               @relation(fields: [forumId], references: [id], onDelete: SetNull)
 
-  @@index([recipientId, read, createdAt(sort: Desc)])  // polling optimizado
+  // Índice crítico para polling incremental:
+  // últimas notificaciones no leídas por usuario.
+  @@index([recipientId, read, createdAt(sort: Desc)])
+  
   @@index([recipientId, forumId])
   @@map("notifications")
 }
