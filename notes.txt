@@ -7,7 +7,7 @@ Checklist antes de hacer push:
 6. git checkout -b feature/...
 7. git add .
 8. git commit -m "..."
-9. git push
+9. git push origin feature/...
 
 
 Formato para commits:
