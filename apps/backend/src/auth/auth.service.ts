@@ -1,10 +1,18 @@
 import {
+  BadRequestException,
+  GoneException,
+  HttpException,
+  HttpStatus,
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
 import { VerificationCodeType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +20,9 @@ import { RegisterDto } from './dto/register.dto';
 
 const BCRYPT_ROUNDS = 12;
 const CODE_EXPIRY_MINUTES = 15;
+
+const MAX_VERIFICATION_ATTEMPTS = 5;
+const RESEND_COOLDOWN_SECONDS = 120;
 
 @Injectable()
 export class AuthService {
@@ -87,5 +98,153 @@ export class AuthService {
 
   private generateVerificationCode(): string {
     return Math.floor(100_000 + Math.random() * 900_000).toString();
+  }
+
+  private isCodeValid(stored: string, received: string): boolean {
+    const a = Buffer.from(stored.padEnd(6, '\0'));
+    const b = Buffer.from(received.padEnd(6, '\0'));
+
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
+  async verifyEmail(dto: VerifyEmailDto): Promise<{ message: string }> {
+    const record = await this.prisma.verificationCode.findFirst({
+      where: {
+        user: { email: dto.email.toLowerCase() },
+        type: VerificationCodeType.EMAIL_VERIFICATION,
+        usedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        code: true,
+        expiresAt: true,
+        attempts: true,
+        userId: true,
+      },
+    });
+
+    if (!record) {
+      throw new NotFoundException(
+        'No hay un código de verificación pendiente para este correo',
+      );
+    }
+
+    if (record.expiresAt < new Date()) {
+      throw new GoneException('El código ha expirado. Solicita uno nuevo.');
+    }
+
+    if (record.attempts >= MAX_VERIFICATION_ATTEMPTS) {
+      throw new HttpException(
+        'Demasiados intentos fallidos. Solicita un nuevo código.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    await this.prisma.verificationCode.update({
+      where: { id: record.id },
+      data: {
+        attempts: {
+          increment: 1,
+        },
+      },
+    });
+
+    if (!this.isCodeValid(record.code, dto.code)) {
+      throw new BadRequestException('Código incorrecto');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.verificationCode.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      }),
+
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { isActive: true },
+      }),
+    ]);
+
+    return {
+      message: 'Correo verificado correctamente. Ya puedes iniciar sesión.',
+    };
+  }
+
+  async resendVerification(
+    dto: ResendVerificationDto,
+  ): Promise<{ message: string }> {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: dto.email.toLowerCase(),
+        isActive: false,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    // Respuesta genérica: no revelar si el email existe (anti-enumeración)
+    if (!user) {
+      return {
+        message:
+          'Si el correo está registrado y pendiente de verificación, recibirás un nuevo código.',
+      };
+    }
+
+    // Verificar cooldown: ¿se envió un código hace menos de 2 minutos?
+    const recentCode = await this.prisma.verificationCode.findFirst({
+      where: {
+        userId: user.id,
+        type: VerificationCodeType.EMAIL_VERIFICATION,
+        usedAt: null,
+        createdAt: {
+          gte: new Date(Date.now() - RESEND_COOLDOWN_SECONDS * 1000),
+        },
+      },
+      select: { id: true, createdAt: true },
+    });
+
+    if (recentCode) {
+      const secondsLeft = Math.ceil(
+        (recentCode.createdAt.getTime() +
+          RESEND_COOLDOWN_SECONDS * 1000 -
+          Date.now()) /
+          1000,
+      );
+      throw new HttpException(
+        `Espera ${secondsLeft} segundos antes de solicitar un nuevo código.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Invalidar todos los códigos pendientes anteriores
+    await this.prisma.verificationCode.updateMany({
+      where: {
+        userId: user.id,
+        type: VerificationCodeType.EMAIL_VERIFICATION,
+        usedAt: null,
+      },
+      data: { usedAt: new Date() },
+    });
+
+    // Crear nuevo código
+    const code = this.generateVerificationCode();
+    const expiresAt = new Date(Date.now() + CODE_EXPIRY_MINUTES * 60 * 1000);
+
+    await this.prisma.verificationCode.create({
+      data: {
+        userId: user.id,
+        code,
+        type: VerificationCodeType.EMAIL_VERIFICATION,
+        expiresAt,
+      },
+    });
+
+    this.mail.sendVerificationCode(dto.email, code);
+
+    return {
+      message:
+        'Si el correo está registrado y pendiente de verificación, recibirás un nuevo código.',
+    };
   }
 }
