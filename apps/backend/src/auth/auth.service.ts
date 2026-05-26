@@ -7,9 +7,17 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { timingSafeEqual } from 'crypto';
 import { VerificationCodeType } from '@prisma/client';
+import { JwtService } from '@nestjs/jwt';
+import { TypedConfigService } from '../config/typed-config.service';
+import type {
+  JwtPayload,
+  JwtRefreshPayload,
+  ValidatedUser,
+} from './types/jwt-payload.type';
 import * as bcrypt from 'bcrypt';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
@@ -29,6 +37,8 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
+    private readonly jwt: JwtService,
+    private readonly config: TypedConfigService,
   ) {}
 
   async register(dto: RegisterDto): Promise<{ message: string }> {
@@ -246,5 +256,85 @@ export class AuthService {
       message:
         'Si el correo está registrado y pendiente de verificación, recibirás un nuevo código.',
     };
+  }
+
+  async validateUser(
+    email: string,
+    password: string,
+  ): Promise<ValidatedUser | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        passwordHash: true,
+        isActive: true,
+        isDeactivated: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!user || user.deletedAt || user.isDeactivated) return null;
+    if (!user.isActive) {
+      throw new UnauthorizedException(
+        'Cuenta no verificada. Revisa tu correo.',
+      );
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) return null;
+
+    return { id: user.id, email: user.email, role: user.role };
+  }
+
+  login(user: ValidatedUser): { accessToken: string; refreshToken: string } {
+    const accessPayload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const refreshPayload: JwtRefreshPayload = {
+      sub: user.id,
+      tokenId: user.id,
+    };
+
+    const accessToken = this.jwt.sign(accessPayload);
+
+    const refreshToken = this.jwt.sign(refreshPayload, {
+      secret: this.config.get('JWT_REFRESH_SECRET'),
+      expiresIn: this.config.get('JWT_REFRESH_EXPIRES_IN'),
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  async refreshAccessToken(
+    payload: JwtRefreshPayload,
+  ): Promise<{ accessToken: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isActive: true,
+        isDeactivated: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!user || !user.isActive || user.isDeactivated || user.deletedAt) {
+      throw new UnauthorizedException('Sesión inválida');
+    }
+
+    const accessPayload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    return { accessToken: this.jwt.sign(accessPayload) };
   }
 }
