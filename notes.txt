@@ -1,13 +1,17 @@
 Checklist antes de hacer push:
-1. pnpm format
-2. pnpm lint
-3. pnpm typecheck
-4. pnpm build
-5. pnpm format:check
-6. git checkout -b feature/...
-7. git add .
-8. git commit -m "..."
-9. git push origin feature/...
+1. git checkout develop
+2. git pull
+3. git checkout -b feature/...
+4. pnpm format
+5. pnpm lint
+6. pnpm typecheck
+7. pnpm build
+8. pnpm format:check
+9. git checkout develop
+A. git merge feature/...
+B. git push origin develop
+C. git branch -d feature/...
+D. git push origin --delete feature/...
 
 
 Formato para commits:
