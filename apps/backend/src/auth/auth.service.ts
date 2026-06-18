@@ -21,6 +21,8 @@ import type {
 import * as bcrypt from 'bcrypt';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -336,5 +338,141 @@ export class AuthService {
     };
 
     return { accessToken: this.jwt.sign(accessPayload) };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+    const GENERIC_RESPONSE = {
+      message:
+        'Si el correo está registrado y activo, recibirás un enlace de recuperación.',
+    };
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: dto.email.toLowerCase(),
+        isActive: true,
+        isDeactivated: false,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    // Respuesta genérica — no revelar si el email existe
+    if (!user) return GENERIC_RESPONSE;
+
+    // Cooldown: mismo mecanismo que resendVerification
+    const recentCode = await this.prisma.verificationCode.findFirst({
+      where: {
+        userId: user.id,
+        type: VerificationCodeType.PASSWORD_RESET,
+        usedAt: null,
+        createdAt: {
+          gte: new Date(Date.now() - RESEND_COOLDOWN_SECONDS * 1000),
+        },
+      },
+      select: { id: true, createdAt: true },
+    });
+
+    if (recentCode) {
+      const secondsLeft = Math.ceil(
+        (recentCode.createdAt.getTime() +
+          RESEND_COOLDOWN_SECONDS * 1000 -
+          Date.now()) /
+          1000,
+      );
+      throw new HttpException(
+        `Espera ${secondsLeft} segundos antes de solicitar otro código.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Invalidar códigos PASSWORD_RESET anteriores no usados
+    await this.prisma.verificationCode.updateMany({
+      where: {
+        userId: user.id,
+        type: VerificationCodeType.PASSWORD_RESET,
+        usedAt: null,
+      },
+      data: { usedAt: new Date() },
+    });
+
+    const code = this.generateVerificationCode();
+    const expiresAt = new Date(Date.now() + CODE_EXPIRY_MINUTES * 60 * 1000);
+
+    await this.prisma.verificationCode.create({
+      data: {
+        userId: user.id,
+        code,
+        type: VerificationCodeType.PASSWORD_RESET,
+        expiresAt,
+      },
+    });
+
+    this.mail.sendPasswordResetCode(dto.email, code);
+
+    return GENERIC_RESPONSE;
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const record = await this.prisma.verificationCode.findFirst({
+      where: {
+        user: { email: dto.email.toLowerCase() },
+        type: VerificationCodeType.PASSWORD_RESET,
+        usedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        code: true,
+        expiresAt: true,
+        attempts: true,
+        userId: true,
+      },
+    });
+
+    if (!record) {
+      throw new NotFoundException(
+        'No hay un código de recuperación pendiente para este correo',
+      );
+    }
+
+    if (record.expiresAt < new Date()) {
+      throw new GoneException('El código ha expirado. Solicita uno nuevo.');
+    }
+
+    if (record.attempts >= MAX_VERIFICATION_ATTEMPTS) {
+      throw new HttpException(
+        'Demasiados intentos fallidos. Solicita un nuevo código.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Incrementar intentos antes de comparar
+    await this.prisma.verificationCode.update({
+      where: { id: record.id },
+      data: { attempts: { increment: 1 } },
+    });
+
+    if (!this.isCodeValid(record.code, dto.code)) {
+      throw new BadRequestException('Código incorrecto');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+
+    // Marcar código y actualizar contraseña en una transacción
+    await this.prisma.$transaction([
+      this.prisma.verificationCode.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { passwordHash },
+      }),
+    ]);
+
+    return {
+      message:
+        'Contraseña actualizada correctamente. Ya puedes iniciar sesión.',
+    };
   }
 }
