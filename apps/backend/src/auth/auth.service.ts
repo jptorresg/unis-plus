@@ -270,6 +270,7 @@ export class AuthService {
         id: true,
         email: true,
         role: true,
+        categories: true,
         passwordHash: true,
         isActive: true,
         isDeactivated: true,
@@ -287,7 +288,12 @@ export class AuthService {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) return null;
 
-    return { id: user.id, email: user.email, role: user.role };
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      categories: user.categories,
+    };
   }
 
   login(user: ValidatedUser): { accessToken: string; refreshToken: string } {
@@ -295,6 +301,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      categories: user.categories,
     };
 
     const refreshPayload: JwtRefreshPayload = {
@@ -321,6 +328,7 @@ export class AuthService {
         id: true,
         email: true,
         role: true,
+        categories: true,
         isActive: true,
         isDeactivated: true,
         deletedAt: true,
@@ -335,6 +343,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      categories: user.categories,
     };
 
     return { accessToken: this.jwt.sign(accessPayload) };

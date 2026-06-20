@@ -5,6 +5,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { ActiveUserGuard } from './common/guards/active-user.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { CategoriesGuard } from './common/guards/categories.guard';
 
 import { envSchema } from './config/env.schema';
 import { AppConfigModule } from './config/config.module';
@@ -66,6 +67,10 @@ import { AdminModule } from './admin/admin.module';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: CategoriesGuard,
     },
   ],
 })
