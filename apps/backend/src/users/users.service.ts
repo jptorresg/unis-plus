@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 import type { UserProfileDto } from './dto/user-profile.dto';
+import type { DeactivateAccountDto } from './dto/deactivate-account.dto';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -102,5 +103,35 @@ export class UsersService {
     });
 
     return { message: 'Contraseña actualizada correctamente' };
+  }
+
+  async deactivateMe(
+    userId: string,
+    dto: DeactivateAccountDto,
+  ): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isDeactivated: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (user.isDeactivated) {
+      throw new BadRequestException('La cuenta ya está desactivada');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isDeactivated: true,
+        deactivatedAt: new Date(),
+        keepContentOnDelete: dto.keepContent,
+        deletedAt: new Date(),
+      },
+    });
+
+    return { message: 'Cuenta desactivada correctamente' };
   }
 }

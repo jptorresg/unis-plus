@@ -5,6 +5,7 @@ import type { JwtPayload } from '../auth/types/jwt-payload.type';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import type { UserProfileDto } from './dto/user-profile.dto';
+import { DeactivateAccountDto } from './dto/deactivate-account.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -33,5 +34,14 @@ export class UsersController {
   ): Promise<{ message: string }> {
     const payload = user as JwtPayload;
     return this.usersService.changePassword(payload.sub, dto);
+  }
+
+  @Post('me/deactivate')
+  async deactivateMe(
+    @CurrentUser() user: unknown,
+    @Body() dto: DeactivateAccountDto,
+  ): Promise<{ message: string }> {
+    const payload = user as JwtPayload;
+    return this.usersService.deactivateMe(payload.sub, dto);
   }
 }
