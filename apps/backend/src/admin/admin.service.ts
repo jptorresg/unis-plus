@@ -6,6 +6,7 @@ import {
 import type { InstitutionalCategory, Prisma, UserRole } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+
 import type { AdminDeactivateUserDto } from './dto/admin-deactivate-user.dto';
 import type { AdminUserListDto } from './dto/admin-user-list.dto';
 

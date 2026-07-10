@@ -8,9 +8,9 @@ import { Reflector } from '@nestjs/core';
 import type { InstitutionalCategory } from '@prisma/client';
 import type { Request } from 'express';
 
+import type { JwtPayload } from '../../auth/types/jwt-payload.type';
 import { CATEGORIES_KEY } from '../decorators/categories.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import type { JwtPayload } from '../../auth/types/jwt-payload.type';
 
 @Injectable()
 export class CategoriesGuard implements CanActivate {

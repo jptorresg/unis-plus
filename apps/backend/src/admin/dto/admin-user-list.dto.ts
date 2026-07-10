@@ -1,3 +1,5 @@
+import { UserRole } from '@prisma/client';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
@@ -7,8 +9,6 @@ import {
   Max,
   Min,
 } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
-import { UserRole } from '@prisma/client';
 
 export class AdminUserListDto {
   @IsOptional()

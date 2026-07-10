@@ -1,5 +1,14 @@
 // Types
 export type {
+  RegisterPayload,
+  LoginPayload,
+  LoginResponse,
+  VerifyEmailPayload,
+  ResendVerificationPayload,
+  AuthMessageResponse,
+} from './types/auth.types'
+
+export type {
   UserProfile,
   DeactivatedUserProfile,
   PublicUser,

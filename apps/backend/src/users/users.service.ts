@@ -7,10 +7,11 @@ import {
 import bcrypt from 'bcrypt';
 
 import { PrismaService } from '../prisma/prisma.service';
+
 import type { ChangePasswordDto } from './dto/change-password.dto';
+import type { DeactivateAccountDto } from './dto/deactivate-account.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 import type { UserProfileDto } from './dto/user-profile.dto';
-import type { DeactivateAccountDto } from './dto/deactivate-account.dto';
 
 const BCRYPT_ROUNDS = 12;
 

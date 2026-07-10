@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 
-import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { DeactivateAccountDto } from './dto/deactivate-account.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import type { UserProfileDto } from './dto/user-profile.dto';
-import { DeactivateAccountDto } from './dto/deactivate-account.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')

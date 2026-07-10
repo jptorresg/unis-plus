@@ -5,10 +5,13 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "jsx": "react-native",
+    "lib": ["ES2020"],
+    "types": ["react", "react-native"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@unis-plus/shared": ["../../packages/shared/src/index.ts"]
     }
   },
-  "include": ["src/**/*", "app/**/*"],
+  "include": ["App.tsx", "src/**/*"],
   "exclude": ["node_modules"]
 }

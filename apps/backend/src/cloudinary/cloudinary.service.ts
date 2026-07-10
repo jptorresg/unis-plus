@@ -1,7 +1,8 @@
+import { Readable } from 'stream';
+
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
-import { Readable } from 'stream';
 
 export interface CloudinaryUploadResult {
   url: string;

@@ -2,10 +2,11 @@ import { Body, Controller, Get, Patch, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 import { Auth } from '../common/decorators/auth.decorator';
+
 import { AdminService } from './admin.service';
+import type { AdminUserListResult } from './admin.service';
 import { AdminDeactivateUserDto } from './dto/admin-deactivate-user.dto';
 import { AdminUserListDto } from './dto/admin-user-list.dto';
-import type { AdminUserListResult } from './admin.service';
 
 @Controller('admin')
 @Auth({ roles: [UserRole.SYSTEM_ADMIN] })

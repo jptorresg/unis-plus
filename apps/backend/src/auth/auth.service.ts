@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'crypto';
+
 import {
   BadRequestException,
   GoneException,
@@ -9,24 +11,24 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { timingSafeEqual } from 'crypto';
-import { VerificationCodeType } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
+import { VerificationCodeType } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
+
 import { TypedConfigService } from '../config/typed-config.service';
+import { MailService } from '../mail/mail.service';
+import { PrismaService } from '../prisma/prisma.service';
+
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { RegisterDto } from './dto/register.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 import type {
   JwtPayload,
   JwtRefreshPayload,
   ValidatedUser,
 } from './types/jwt-payload.type';
-import * as bcrypt from 'bcrypt';
-import { ResendVerificationDto } from './dto/resend-verification.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-
-import { MailService } from '../mail/mail.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { RegisterDto } from './dto/register.dto';
 
 const BCRYPT_ROUNDS = 12;
 const CODE_EXPIRY_MINUTES = 15;

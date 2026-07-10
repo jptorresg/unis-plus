@@ -7,9 +7,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 
+import type { JwtPayload } from '../../auth/types/jwt-payload.type';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import type { JwtPayload } from '../../auth/types/jwt-payload.type';
 
 @Injectable()
 export class ActiveUserGuard implements CanActivate {

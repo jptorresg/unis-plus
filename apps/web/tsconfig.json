@@ -5,11 +5,13 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "jsx": "preserve",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@unis-plus/shared": ["../../packages/shared/src/index.ts"]
     }
   },
-  "include": ["next-env.d.ts", "app/**/*", "src/**/*", ".next/types/**/*.ts"],
+  "include": ["next-env.d.ts", "src/**/*", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }
