@@ -28,6 +28,14 @@
     },
     "extra": {
       "apiUrl": "http://10.0.2.2:3000"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "UNIS+ necesita acceso a tus fotos para actualizar tu perfil."
+        }
+      ]
+    ]
   }
 }

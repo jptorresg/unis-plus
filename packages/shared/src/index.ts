@@ -14,6 +14,9 @@ export type {
   PublicUser,
   UserRole,
   InstitutionalCategory,
+  UpdateProfilePayload,
+  UploadImageResponse,
+  UserProfileResponse,
 } from './types/user.types'
 export { isDeactivatedUser } from './types/user.types'
 

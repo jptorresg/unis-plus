@@ -27,7 +27,9 @@ export class CloudinaryService {
   async uploadFile(
     buffer: Buffer,
     folder: string,
-    options?: { transformation?: Record<string, unknown> },
+    options?: {
+      transformation?: Record<string, unknown> | Record<string, unknown>[];
+    },
   ): Promise<CloudinaryUploadResult> {
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(

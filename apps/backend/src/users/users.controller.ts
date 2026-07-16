@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  FileValidationPipe,
+  type UploadedMulterFile,
+} from '../common/pipes/file-validation.pipe';
 
 import type { JwtPayload } from '../auth/types/jwt-payload.type';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -44,5 +57,37 @@ export class UsersController {
   ): Promise<{ message: string }> {
     const payload = user as JwtPayload;
     return this.usersService.deactivateMe(payload.sub, dto);
+  }
+
+  @Post('me/avatar')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadAvatar(
+    @CurrentUser() user: unknown,
+    @UploadedFile(new FileValidationPipe()) file: UploadedMulterFile,
+  ) {
+    const { sub } = user as JwtPayload;
+    const { url, publicId } = await this.usersService.uploadProfileImage(
+      sub,
+      file,
+      'avatar',
+    );
+    await this.usersService.updateProfile(sub, { avatarUrl: url });
+    return { url, publicId };
+  }
+
+  @Post('me/banner')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadBanner(
+    @CurrentUser() user: unknown,
+    @UploadedFile(new FileValidationPipe()) file: UploadedMulterFile,
+  ) {
+    const { sub } = user as JwtPayload;
+    const { url, publicId } = await this.usersService.uploadProfileImage(
+      sub,
+      file,
+      'banner',
+    );
+    await this.usersService.updateProfile(sub, { bannerUrl: url });
+    return { url, publicId };
   }
 }

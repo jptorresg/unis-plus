@@ -7,6 +7,8 @@ import {
 import bcrypt from 'bcrypt';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import type { UploadedMulterFile } from '../common/pipes/file-validation.pipe';
 
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { DeactivateAccountDto } from './dto/deactivate-account.dto';
@@ -17,7 +19,10 @@ const BCRYPT_ROUNDS = 12;
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   async getMe(userId: string): Promise<UserProfileDto> {
     const user = await this.prisma.user.findUnique({
@@ -134,5 +139,34 @@ export class UsersService {
     });
 
     return { message: 'Cuenta desactivada correctamente' };
+  }
+
+  async uploadProfileImage(
+    userId: string,
+    file: UploadedMulterFile,
+    type: 'avatar' | 'banner',
+  ): Promise<{ url: string; publicId: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const folder = `unis-plus/users/${type}s`;
+
+    const result = await this.cloudinary.uploadFile(file.buffer, folder, {
+      transformation:
+        type === 'avatar'
+          ? [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }]
+          : [{ width: 1200, height: 400, crop: 'fill' }],
+    });
+
+    return {
+      url: result.url,
+      publicId: result.publicId,
+    };
   }
 }
